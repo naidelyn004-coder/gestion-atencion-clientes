@@ -65,7 +65,7 @@ npm install
 npm start
 ```
 
-Abre `http://localhost:4200`. La navegación superior alterna entre la pantalla pública y el panel de operadores. Desde la pantalla pública se generan turnos; en una mesa libre, **Siguiente / Llamar turno** toma el turno abierto más antiguo. Al terminar, **Atendido / Liberar mesa** completa el turno y deja la mesa disponible.
+Abre `http://localhost:4200`. La navegación superior alterna entre la pantalla pública y el panel de operadores. La pantalla pública y el panel de operadores se actualizan automáticamente cada 2,5 segundos mediante polling RxJS. Desde la pantalla pública se generan turnos; en una mesa libre, **Siguiente / Llamar turno** toma el turno abierto más antiguo. Al terminar, **Atendido / Liberar mesa** completa el turno y deja la mesa disponible.
 
 ## API
 
@@ -84,4 +84,11 @@ Abre `http://localhost:4200`. La navegación superior alterna entre la pantalla 
 ## Estados y flujo
 
 `open` (en espera) → `attending` (asignado a Mesa 1–4) → `completed` (atendido y mesa liberada). El número de turno es correlativo y el siguiente turno se obtiene en orden de llegada.
+
+
+## Despliegue público en Render
+
+El archivo `render.yaml` configura un único servicio web gratuito. Render construye Angular dentro de Docker y sirve la interfaz y la API Flask bajo el mismo dominio; no hace falta configurar una URL de API externa. Después de conectar este repositorio en Render, el Blueprint crea el servicio `gestion-atencion-clientes` y publica la URL que Render asigne.
+
+El plan gratuito puede suspender el servicio tras inactividad y su sistema de archivos es temporal. Como SQLite guarda `backend/tickets.db` en ese sistema, los turnos pueden perderse al reiniciar, suspender o volver a desplegar. Para conservar datos de forma duradera, se debe migrar a una base gestionada como PostgreSQL; esa configuración puede implicar coste.
 
