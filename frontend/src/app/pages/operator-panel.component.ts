@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { interval, Subscription } from 'rxjs';
+import { EMPTY, Observable, catchError, exhaustMap, forkJoin, interval, startWith, Subscription } from 'rxjs';
 import { Desk, Stats, Ticket } from '../models';
 import { TicketService } from '../services/ticket.service';
 
@@ -13,20 +13,35 @@ import { TicketService } from '../services/ticket.service';
   </main>` })
 export class OperatorPanelComponent implements OnInit, OnDestroy {
   private readonly service = inject(TicketService);
+  private readonly changeDetector = inject(ChangeDetectorRef);
   stats: Stats | null = null;
   desks: Desk[] = [1, 2, 3, 4].map((desk) => ({ desk, ticket: null }));
   tickets: Ticket[] = [];
   busy = false;
   message = '';
   private poll?: Subscription;
-  ngOnInit(): void { this.refresh(); this.poll = interval(2500).subscribe(() => this.refresh()); }
+  ngOnInit(): void {
+    this.poll = interval(2500).pipe(startWith(0), exhaustMap(() => this.loadSnapshot())).subscribe((snapshot) => this.applySnapshot(snapshot));
+  }
   ngOnDestroy(): void { this.poll?.unsubscribe(); }
+  private loadSnapshot(): Observable<{ stats: Stats; desks: Desk[]; tickets: Ticket[] }> {
+    return forkJoin({ stats: this.service.stats(), desks: this.service.desks(), tickets: this.service.tickets() }).pipe(catchError(() => {
+      this.message = 'No se pudo conectar con el servidor. Verifica que el backend esté iniciado.';
+      this.changeDetector.markForCheck();
+      return EMPTY;
+    }));
+  }
+  private applySnapshot(snapshot: { stats: Stats; desks: Desk[]; tickets: Ticket[] }): void {
+    this.stats = snapshot.stats;
+    this.desks = snapshot.desks;
+    this.tickets = snapshot.tickets;
+    this.changeDetector.markForCheck();
+  }
   refresh(): void {
-    this.service.stats().subscribe({ next: (data) => this.stats = data, error: () => this.message = 'No se pudo conectar con el servidor. Verifica que el backend esté iniciado.' });
-    this.service.desks().subscribe({ next: (data) => this.desks = data });
-    this.service.tickets().subscribe({ next: (data) => this.tickets = data });
+    this.loadSnapshot().subscribe((snapshot) => this.applySnapshot(snapshot));
   }
   call(desk: number): void { this.busy = true; this.message = ''; this.service.callNext(desk).subscribe({ next: () => { this.busy = false; this.refresh(); }, error: (e) => { this.busy = false; this.message = e.error?.error ?? 'No fue posible llamar el turno.'; this.refresh(); } }); }
   finish(ticket: Ticket): void { this.busy = true; this.service.complete(ticket.id).subscribe({ next: () => { this.busy = false; this.message = `Turno ${ticket.number} completado. Mesa ${ticket.desk} liberada.`; this.refresh(); }, error: () => { this.busy = false; this.message = 'No fue posible liberar la mesa.'; } }); }
   statusLabel(status: Ticket['status']): string { return status === 'open' ? 'En espera' : status === 'attending' ? 'Atendiendo' : 'Completado'; }
 }
+
